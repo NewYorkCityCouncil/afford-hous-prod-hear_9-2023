@@ -1,0 +1,172 @@
+---
+title: "j51_compliance"
+output: html_document
+date: "2023-03-29"
+---
+
+```{r setup, include=FALSE}
+# ---- SETUP ----
+knitr::opts_chunk$set(eval = FALSE)
+library(RSocrata)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(leaflet)
+library(sf)
+library(councildown)
+# ---- READ DATA ----
+# nyu furman: all active properties receiving j51 benefits
+nyu_data <- read.csv("../data/input/raw/properties_by-area.csv") # excludes properties w/ expired subsidies
+# housing code violations: to look at rent impairing hcvs in current j51 properties (from nyu furman data), past due - compliance?
+# rent_impaired <- read.csv("../data/input/raw/Housing_Maintenance_Code_Violations.csv") # update: not as helpful as i thought it would be but still interesting
+```
+
+```{r}
+# knitr::opts_chunk$set(eval = FALSE)
+# # ---- CLEANUP ----
+# # ---- covert all char dates to date var.s
+# rent_impaired$NOVIssuedDate <- mdy(c(rent_impaired$NOVIssuedDate))
+# rent_impaired$InspectionDate <- mdy(c(rent_impaired$InspectionDate))
+# rent_impaired$ApprovedDate <- mdy(c(rent_impaired$ApprovedDate))
+# rent_impaired$OriginalCertifyByDate <- mdy(c(rent_impaired$OriginalCertifyByDate))
+# rent_impaired$OriginalCorrectByDate <- mdy(c(rent_impaired$OriginalCorrectByDate))
+# rent_impaired$NewCertifyByDate <- mdy(c(rent_impaired$NewCertifyByDate))
+# rent_impaired$NewCorrectByDate <- mdy(rent_impaired$NewCorrectByDate)
+# rent_impaired$NewCorrectByDate <- mdy(rent_impaired$CertifiedDate)
+# rent_impaired$CertifiedDate <- mdy(rent_impaired$CertifiedDate)
+# # rent_impaired %>% arrange(NOVIssuedDate)
+# # ---- create new df: (all history) rent impairing hcvs in current j51 properties 
+# j51_impaired <- rent_impaired[rent_impaired$BBL %in% c(nyu_data$bbl), ]
+# # unique(j51_impaired$CurrentStatus)
+# # ---- remove closed/dismissed violations
+# j51_impaired_open <- j51_impaired[j51_impaired$ViolationStatus == 'Open', ]
+# # ---- next: grab overdue violations?
+```
+
+```{r}
+# knitr::opts_chunk$set(eval = FALSE)
+# rent_impaired_open <- rent_impaired[rent_impaired$ViolationStatus == 'Open', ]
+```
+
+```{r}
+# ---- IGNORE, NOT HELPFUL ----
+# sf_df_2 = st_as_sf(rent_impaired_open, coords = c("Longitude", "Latitude"), crs = 4326)
+# rent_impaired_open <- rent_impaired_open[!is.na(rent_impaired_open$Latitude),]
+# rent_impaired_open <- rent_impaired_open[!is.na(rent_impaired_open$Longitude),]
+# sf_df2 = st_as_sf(rent_impaired_open, coords = c("Longitude", "Latitude"), crs = 4326)
+# shape_df2 <- st_join(council_districts, sf_df2 , join = st_contains)
+# map2 = leaflet(options = leafletOptions(zoomControl = FALSE,
+#                                        minZoom = 11,
+#                                        maxZoom = 16)) %>%
+#   addPolygons(data = shape_df2, weight = 1, col = '#686868', fillOpacity = 0.02)
+# ---- IGNORE, NOT HELPFUL ----
+```
+
+```{r}
+# ---- GET CD SHAPEFILE ----
+unzip_sf <- function(zip_url) {
+  temp <- tempfile()
+  temp2 <- tempfile()
+  #download the zip folder from the internet save to 'temp' 
+  download.file(zip_url, temp)
+  #unzip the contents in 'temp' and save unzipped content in 'temp2'
+  unzip(zipfile = temp, exdir = temp2)
+  #if returns "character(0), then .shp may be nested within the folder
+  your_SHP_file <- ifelse(!identical(list.files(temp2, pattern = ".shp$",full.names=TRUE), character(0)), 
+                          list.files(temp2, pattern = ".shp$",full.names=TRUE), 
+                          list.files(list.files(temp2, full.names=TRUE), pattern = ".shp$", full.names = TRUE))
+  unlist(temp)
+  unlist(temp2)
+  return(your_SHP_file)
+}
+```
+
+```{r}
+council_districts = unzip_sf("https://www.nyc.gov/assets/planning/download/zip/data-maps/open-data/nycc_21d.zip") %>%
+  st_read() %>%
+  st_transform(st_crs(4326))
+```
+
+```{r}
+# ---- IGNORE ----
+# ---- exploratory mapping ----
+# CD map: j51 properties w/ open, rent-affecting HCVs
+# sf_df = st_as_sf(j51_impaired_open, coords = c("Longitude", "Latitude"), crs = 4326)
+# shape_df <- st_join(council_districts, sf_df , join = st_contains)
+# map = leaflet(options = leafletOptions(zoomControl = FALSE,
+#                                        minZoom = 11,
+#                                        maxZoom = 16)) %>%
+#   addPolygons(data = shape_df, weight = 1, col = '#686868', fillOpacity = 0.02)
+# map
+# ---- IGNORE ----
+```
+
+```{r}
+# ---- prepare nyu furman data for mapping
+knitr::opts_chunk$set(eval = FALSE)
+council_districts <- council_districts %>% 
+  rename("CouncilDistrict" = "CounDist")
+nyu_data$CouncilDistrict <- readr::parse_number(nyu_data$ccd_name)
+nyu_shape <- nyu_data %>% full_join(y = council_districts, by = 'CouncilDistrict') %>%
+                st_as_sf() 
+```
+
+
+```{r}
+# ---- MAPPING
+# ---- map of all j51 properties by council district and neighborhoods
+sums <- nyu_shape %>% group_by(geometry, CouncilDistrict) %>% summarise(count=n())
+all_j51 <- leaflet(options = leafletOptions(zoomControl = FALSE,
+                                       minZoom = 11,
+                                       maxZoom = 16)) %>% addCouncilStyle(add_dists = TRUE) %>%
+  addPolygons(data=nyu_shape, weight=1, col='#708090', fillOpacity = 0.01) %>%
+  addPolygons(data = sums, weight = .5, col = '#262626', fillOpacity = 0, opacity=0,
+              popup = paste0("<strong>Number of Properties: </strong>", sums$count, "<br>"))
+```
+
+
+```{r}
+# ---- MAPPING
+nyu_shape_delinq <- nyu_shape[nyu_shape$tax_delinquency==1,]
+sums_delinq <- nyu_shape_delinq %>% group_by(geometry, CouncilDistrict) %>% summarise(count=n())
+
+j51_delinq <- leaflet(options = leafletOptions(zoomControl = FALSE,
+                                       minZoom = 11,
+                                       maxZoom = 16)) %>%
+  addProviderTiles("Esri.WorldGrayCanvas") %>%
+  
+  addPolygons(data=nyu_shape, weight=.5, col = '#686868', fillOpacity = 0, opacity=1,
+              popup = paste0(
+                "<strong>Council District: </strong>", nyu_shape$CouncilDistrict, "<br>")) %>%
+  
+  addPolygons(data=nyu_shape_delinq, weight=1, col='#686868', fillOpacity = 0.02) %>% 
+  
+  addPolygons(data = sums_delinq, weight = .5, col = '#262626', fillOpacity = 0, opacity=.5,
+              popup = paste0(
+                 "<strong>Council District: </strong>", sums_delinq$CouncilDistrict, "<br>",
+                 "<strong>Number of Properties: </strong>", sums_delinq$count, "<br>"))
+```
+
+```{r}
+# ---- MAPPING
+nyu_shape_violation <- nyu_shape[nyu_shape$ser_violation==1,]
+sums_violation <- nyu_shape_violation %>% group_by(geometry, CouncilDistrict) %>% summarise(count=n())
+j51_violation <- leaflet(options = leafletOptions(zoomControl = FALSE,
+                                       minZoom = 11,
+                                       maxZoom = 16)) %>%
+  addProviderTiles("Esri.WorldGrayCanvas") %>%
+  
+  addPolygons(data=nyu_shape, weight=.5, col = '#686868', fillOpacity = 0, opacity=1,
+              popup = paste0(
+                "<strong>Council District: </strong>", nyu_shape$CouncilDistrict, "<br>")) %>%
+  
+  addPolygons(data=nyu_shape_violation, weight=1, col='#686868', fillOpacity = 0.02) %>% 
+  
+  addPolygons(data = sums_violation, weight = .5, col = '#262626', fillOpacity = 0, opacity=.5,
+              popup = paste0(
+                 "<strong>Council District: </strong>", sums_violation$CouncilDistrict, "<br>",
+                 "<strong>Number of Properties: </strong>", sums_violation$count, "<br>"))
+```
+

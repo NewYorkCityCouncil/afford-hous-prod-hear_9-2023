@@ -1,0 +1,278 @@
+---
+title: "J51 Notes - Draft"
+output:
+  pdf_document: default
+  html_document: default
+date: "2023-03-23"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE)
+# ----SETUP ----
+library(RSocrata)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+
+# read dataset ---- (opendata)
+p <- read.socrata("https://data.cityofnewyork.us/resource/y7az-s7wc.json?$limit=9999999999", stringsAsFactors = F)
+
+# read dataset ---- (nyu furman center)
+nyu_data <- read.csv("../data/input/raw/properties_by-area.csv")
+```
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE)
+# ---- CLEANUP ----
+# checking for duplicates ----
+# unique(duplicated(j51))
+# j51[duplicated(j51),]
+# renaming for boro ----
+# NOTE: INIT_YEAR = 9999 if there were more than one abatement in a particular tax year this record is a total of the amounts for those years.
+j51 <- p %>% mutate_if(is.character,as.integer)
+j51$b <- recode(j51$b,
+                `1` = "Manhattan",
+                `2` = "Bronx",
+                `3` = "Brooklyn",
+                `4` = "Queens",
+                `5` = "Staten Island"
+                )
+j51$bbl <- paste(j51$b, j51$block, j51$lot)
+# INIT_YEAR = 9999. If there were more than one abatements in a particular tax year this record is a total of the amounts for those years.
+# j51[(j51$bbl == "Manhattan 7 23") & (j51$tax_year ==1982),] 
+j51 <- j51[j51$init_year != 9999,] # removing the double count/sum tax_year obs
+```
+
+```{r,include=FALSE}
+# ---- ABATEMENTS ----
+abatements <- j51[!is.na(j51$abatement),]
+abatements2 <- abatements %>% group_by(b, tax_year) %>%
+  summarise(count=n(), mean_abate = mean(abatement), median_abate = median(abatement), min_abate=min(abatement), max_abate=max(abatement))
+abatements2 %>% group_by(b) %>% summarise(total=sum(count))
+# number of abatements given out by tax year
+num_abate <- ggplot(data=abatements2, aes(x=tax_year, y=count, col=b)) + geom_line()
+# mean amount given per abatement
+mean_abate <- ggplot(data=abatements2, aes(x=tax_year, y=mean_abate, col=b)) + geom_line()
+# median amount given per abatement
+median_abate <- ggplot(data=abatements2, aes(x=tax_year, y=median_abate, col=b)) + geom_line()
+```
+
+```{r, include=FALSE}
+# ---- EXEMPTIONS ----
+exemptions <- j51[!is.na(j51$exempt_amt),]
+exemptions2 <- exemptions %>% group_by(b, tax_year) %>%
+  summarise(count=n(), mean_ex=mean(exempt_amt), median_ex=median(exempt_amt), min_ex=min(exempt_amt), max_ex=max(exempt_amt))
+# exemptions2
+# number of exemptions given out by tax year
+num_exemp <- ggplot(data=exemptions2, aes(x=tax_year, y=count, col=b)) + geom_line()
+# mean amount given per exemption
+mean_exemp <- ggplot(data=exemptions2, aes(x=tax_year, y=mean_ex, col=b)) + geom_line()
+# median amount given per exemption
+median_exemp <- ggplot(data=exemptions2, aes(x=tax_year, y=median_ex, col=b)) + geom_line()
+# num_exemp
+# mean_exemp
+# median_exemp
+exemptions2 %>% group_by(b) %>% summarise(total=sum(count))
+```
+
+```{r, include=FALSE}
+# ---- COMPLIANCE ----
+sum(nyu_data$res_units)
+# current properties
+nbhd <- nyu_data %>% group_by(boro_name, sba_name) %>%
+  summarise(count=n()) 
+nbhd[order(nbhd$count, decreasing=TRUE),]
+```
+
+```{r,include=FALSE}
+nyu_data <- transform(nyu_data, both = ifelse((tax_delinquency & ser_violation) == 1, 1, 0))
+nyu_data <- transform(nyu_data, either = ifelse((tax_delinquency | ser_violation) == 1, 1, 0))
+temp <- nyu_data %>% group_by(boro_name, either) %>% summarise(count=n())
+temp
+temp[order(temp$either ==1, temp$count, decreasing=TRUE),]
+# nyu_data %>% group_by(boro_name, tax_delinquency) %>% summarise(count=n())
+# nyu_data %>% group_by(boro_name, ser_violation) %>% summarise(count=n())
+# nyu_data %>% group_by(cd_name, both) %>% summarise(count=n())
+```
+
+```{r, include=FALSE}
+# # PLOTS
+# # na.omit(nyu_data[nyu_data$either==1,])%>% group_by(boro_name) %>% summarise(count=n())
+# #nyu_data[nyu_data$either==1,] %>% group_by(boro_name, either) %>% summarise(count=n())
+# 
+# temp <- na.omit(nyu_data[nyu_data$either==1,] %>% group_by(boro_name, either) %>% summarise(count=n()))
+# temp
+# ggplot (temp, aes(col=boro_name, y=count)) + geom_bar()
+# # either_plot <- ggplot(na.omit(nyu_data[nyu_data$either==1,])%>% group_by(boro_name, either) %>% summarise(), aes(x=boro_name, fill=count)) + geom_bar()
+# # either_plot
+# # tax_plot <- ggplot(na.omit(nyu_data[nyu_data$tax_plot==1,]), aes(x=boro_name, fill=tax_plot)) + geom_bar()
+# # tax_plot
+# # ser_plot <- ggplot(na.omit(nyu_data[nyu_data$ser_violation==1,]), aes(x=boro_name, fill=ser_violation)) + geom_bar()
+# # ser_plot
+# # # ser_plot <- ggplot(nyu_data, aes(x=boro_name, fill=sum(ser_violation))) + geom_bar()
+# # grid.arrange(either_plot, tax_, nrow = 1)
+```
+
+J-51 is a property tax exemption and abatement for renovating a residential apartment building or conversion to multiple dwellings.
+
+J-51 is a property tax exemption and abatement for renovating a residential apartment building. The benefit varies depending on the building's location and the type of improvement.
+
+The NYC Department of Housing Preservation and Development (HPD) determines the eligibility for the program. Finance administers the benefit. Once approved you must complete and submit Finance's J-51 Property Tax Exemption and Abatement Application. You need to include the certificate of Eligibility from HPD with your application.
+
+# Compliance
+
+## General landscape
+
+The Bronx has the most J51 properties, and a higher proportion of tax delinquencies and SER violations than any other boro (although Staten has a greater prop. of SER violations, there's only 5 J51 properties total). In the Bronx, Brooklyn, and Staten Island, the majority of J51 properties have at least one type of compliance issue. Several of the least compliant neighborhoods are among the top 15 poorest neighborhoods in the city.
+
+**Number of either violation by boro: **
+  - Bronx: 765 (88.24%, total=867)
+  - Brooklyn: 602 (63.37%, total=950)
+  - Manhattan: 362 (40.13%, total=902)
+  - Queens: 37 (46.25%, total=80)
+  - Staten: 5 (100%, total=5)
+
+## Tax delinquency compliance
+
+**Number of tax delinquencies by boro: **
+  - Bronx: 640 (73.82%, total=867)
+  - Brooklyn: 504 (51.96%, total=950)
+  - Manhattan: 53 (5.88%, total=902)
+  - Queens: 14 (17.5%, total=80)
+  - Staten: 0 (0%, total=5)
+
+**Top 10 worst neighborhoods:**
+  - Highbridge*/Concourse (BX 04): 164
+  - Bedford Stuyvesant (BX 03): 98
+  - Fordham* /University Heights (BX 05): 95
+  - Morrisania* /Crotona* (BX 03): 92
+  - Crown Heights/Prospect Heights (BK 08): 91
+  - Bushwick (BK 04): 72
+  - Kingsbridge Heights* /Bedford (BX 07): 69
+  - Hunts Point* /Longwood* (BX 02): 50
+  - Mott Haven/Melrose* (BX 01): 44
+  - Belmont/East Tremont (BX 06): 40
+  
+*Highbridge, Melrose, Longwood, Hunts Point, Morrisania, Crotona Park East, Fordham, Kingsbridge are some of the poorest neighborhoods in NYC.
+
+## Serious violation compliance
+
+**Number of SER violations by boro: **
+  - Bronx: 569 (65.63%, total=867)
+  - Brooklyn: 300 (30.93%, total=970)
+  - Manhattan: 351 (38.91%, total=902)
+  - Queens: 25 (31.25%, total=80)
+  - Staten island: 5 (100%, total=5)
+  
+**Top 10 worst neighborhoods: **
+  - Central Harlem (MN 10): 186
+  - Highbridge* /Concourse (BX 04): 149
+  - Fordham* /University Heights (BX 05): 107
+  - Bedford Stuyvesant (BX 03): 63
+  - Crown Heights/Prospect Heights (BK 08): 59
+  - Morrisania* /Crotona* (BX 03): 56
+  - Kingsbridge Heights/Bedford (BX 07): 53
+  - Washington Heights/Inwood (MN 12): 52
+  - Morningside Heights/Hamilton (MN 09): 47
+  - Belmont/East Tremont (BX 06): 46
+
+*Morrisania, Highbridge, Crotona Park East, Fordham, Kingsbridge, West Bronx are some of the poorest neighborhoods in NYC. 
+
+# Historical
+
+## General landscape: 
+
+Most J-51 benefits were given to/in the Bronx. The top 10 neighborhoods receiving J51 benefits do not include most of the top 15 poorest neighborhoods in NYC. 
+
+**Abatements recorded across all tax years - **
+Bronx: 1,688,665 (59.45%)
+Brooklyn: 313,419 (11.03%)
+Manhattan: 570,285 (20.08%)
+Queens: 251,777 (8.86%)
+Staten Island: 16,357 (.58%)
+
+**Exemptions recorded across all tax years - **
+Bronx: 232,635 (43.95%)
+Brooklyn: 137,137 (25.89%)
+Manhattan: 133,082 (25.14%)
+Queens: 22,810 (4.31%)
+Staten Island: 3,700 (.7%)
+
+*Note: buildings can receive multiple J-51 benefits per tax year. *
+
+## How many units and their levels of affordability
+
+Currently 2,824 properties (NYU Furman data).
+
+## Where are the buildings?
+
+**Top 10 neighborhoods (current, NYU Furman):**
+  1) Cental Harlem, Manhattan: 445
+  2) Highbridge/South Concourse, Bronx: 202
+  3) North Crown Heights/Prospect Heights, Brooklyn: 186
+  4) Morrisania/Belmont, Bronx: 183
+  5) Bedford Stuyesant, Brooklyn: 181
+  6) Bushwick, Brooklyn: 175
+  7) Mott Haven/Hunts Point, Bronx: 163
+  8) University Heights/Fordham, Bronx: 141
+  9) Brownsville/Ocean Hill, Brooklyn: 103
+  10) Morningside Heights/Hamilton Heights, Manhattan: 91
+
+Where are abatements by tax year: 
+```{r}
+num_abate
+```
+
+Where are exemptions by tax year:
+```{r}
+num_exemp
+```
+
+Note: buildings can receive multiple J-51 benefits per tax year. 
+
+## What are the surrounding socio-economics?
+
+**Median salary and poverty rate in top 10 neighborhoods** (current, Furman data) - 2020 datausa.io:
+  1) Cental Harlem, Manhattan: ~54k, 23% and decreasing
+  2) Highbridge/South Concourse, Bronx: ~34k, 33.5% and decreasing
+  3) North Crown Heights/Prospect Heights, Brooklyn: ~66k, 20% and decreasing
+  4) Morrisania/Belmont, Bronx: ~53k, 14.3% and decreasing
+  5) Bedford Stuyesant, Brooklyn: ~60k, 26.6% and decreasing
+  6) Bushwick, Brooklyn: ~58k, 26.2% and decreasing
+  7) Mott Haven/Hunts Point, Bronx: ~27k, 29.1% and decreasing
+  8) University Heights/Fordham, Bronx: ~32k, 35.5% and decreasing
+  9) Brownsville/Ocean Hill, Brooklyn: ~32k, 33.1% and decreasing
+  10) Morningside Heights/Hamilton Heights, Manhattan: ~73k*
+
+*from Furman.
+
+## Is production happening where it should
+
+**Top 15 poorest neighborhoods in NYC (newsbreak):**
+  - District 16: West Bronx, Morrisania, Highbridge, and Melrose
+  - District 17: Melrose, Longwood, Hunts Point, Morrisania, and Crotona Park East
+  - District 15: Fordham, Bathgate, Bronxdale, Van Nest, and Mount Hope
+  - District 8: El Barrio/East Harlem and South Bronx
+  - District 14: Fordham, Kingsbridge, Morris Heights, and West Bronx
+  
+**Poorest neighborhoods included in top 10 J51 neighborhoods?**
+  - YES (4): Morrisania, Highbridge, Hunts Point, Fordham
+  - NO (11): West Bronx, Melrose, Longwood, Crotona Park East, Bathgate, Bronxdate, Van Nest, Mount Hope, El Barrio/East Harlem, South Bronx, Kingsbridge, Morris Heights, West Bronx
+
+*NOTE: Weird - from 2000 onwards Staten Island received very few tax exemptions from J51, but of the mean/median exemption received was much higher than any other boro. What is going on in these buildings that is so costly?*
+
+```{r}
+mean_exemp
+median_exemp
+```
+```{r}
+nyu_data
+```
+
+
+```{r}
+nyu_data[nyu_data$bbl==1003930039,]
+```
+

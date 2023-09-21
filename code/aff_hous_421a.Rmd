@@ -1,0 +1,82 @@
+---
+title: "Affordable Housing -- Explore"
+author: "Brook Frye"
+date: "3/22/2023"
+output: html_document
+---
+
+
+
+```{r echo=TRUE, warning=FALSE}
+
+# #### Let's look at the [property exemption data](https://data.cityofnewyork.us/City-Government/Property-Exemption-Detail/muvi-b6kx)  
+#   - how to sort through this? which codes are relevant 
+#   - is there an easier way to get this info?
+library(data.table)
+library(ggplot2)
+prop_expt <- fread("https://data.cityofnewyork.us/resource/muvi-b6kx.csv?$limit=9999999999")
+expt_codes <- fread("https://data.cityofnewyork.us/resource/myn9-hwsy.csv")
+```
+
+
+#### Let's look at the [affordable housing by production data](https://data.cityofnewyork.us/Housing-Development/Affordable-Housing-Production-by-Building/hg8x-zxpr)
+- What's up with the empty/other column?
+```{r echo=FALSE}
+affho <- fread("https://data.cityofnewyork.us/resource/hq68-rnsi.csv?$limit=9999999999")
+# unique(affho$planned_tax_benefit)
+# let's do a quick count 
+affho[,.N, by = "planned_tax_benefit"][order(N, decreasing = TRUE)]
+affho[planned_tax_benefit %in% "", planned_tax_benefit := "Other"]
+top_bens <- affho[,.N, by = "planned_tax_benefit"][order(N, decreasing = TRUE)][1:7]
+affho[planned_tax_benefit %in% "",]
+
+# what's up with the empty rows for tax benefit 
+affho[planned_tax_benefit %in% "J-51 Enriched", planned_tax_benefit := "J-51"]
+
+affho[, project_start_date := as.Date(project_start_date)]
+affho[, project_completion_date := as.Date(project_start_date)]
+affho[, year_:= year(project_start_date)]
+affho[, n_projs := .N, by = .(planned_tax_benefit, year_)]
+
+n_proj_time <- unique(affho[planned_tax_benefit %in% top_bens$planned_tax_benefit, .(n_projs, planned_tax_benefit, year_)])
+
+ ggplot(n_proj_time, aes(x = planned_tax_benefit, y=n_projs,  
+               group = planned_tax_benefit, fill=planned_tax_benefit)) +
+  scale_fill_brewer(palette = "Set2") + 
+  geom_col() + facet_wrap(~ year_) + theme_bw() + xlab("Planned Benefit") + ylab("Number of Projects") + theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+#### Let's look at the 421-a buildings
+```{r echo=FALSE}
+
+sub_421a <- affho[planned_tax_benefit %in% "421a", .(year_, extremely_low_income_units, very_low_income, low_income_units, moderate_income, middle_income, counted_rental_units, total_units, project_id)]
+
+
+sub_421a[, prop_extremely_low := extremely_low_income_units/total_units]
+sub_421a[, prop_very_low := very_low_income/total_units]
+sub_421a[, prop_low := low_income_units/total_units]
+sub_421a[, prop_moderate := moderate_income/total_units]
+sub_421a[, prop_middle_income := middle_income/total_units]
+sub_421a[, prop_rental := moderate_income/total_units]
+
+# gg_dt <- sub_421a[,.(prop_extremely_low)]
+
+long <- melt(sub_421a, id.vars = "year_")
+
+sum_long <- long[, .(totals = sum(value)), by=.(variable, year_)]
+
+ggplot(sum_long, aes(x = variable, y=totals,  
+               group = variable, fill=variable)) +
+  scale_fill_brewer(palette = "Set2") + 
+  geom_col() + facet_wrap(~ year_) + theme_bw() + xlab("Affordability") + ylab("Number of Units") + theme(axis.text.x=element_text(angle=45, hjust=1))
+
+
+fc_bbl <- fread("~/Desktop/housing_and_buildings/data/furman_center_subs_housing_2022/FC_SHD_bbl_analysis_2022-12-20.csv")
+fc_421a <- fc_bbl[prog_421a %in% 1, ]
+
+
+```
+
+
+
+
