@@ -17,7 +17,7 @@ source("~/affor-hous-pipe_2023/code/housing_prod_general.R")
 source("~/affor-hous-pipe_2023/code/afford_housing_income_levels.R")
 ```
 
-#### The number of rentstabilized units over time has been steadily declining. In 2008, there were ~892,700, and in 2021, there were ~802,500. These data come from [SOA tax bills](https://a836-pts-access.nyc.gov/care/search/commonsearch.aspx?mode=persprop)
+#### The number of rentstabilized units over time has been steadily declining. In 2008, there were ~892,700, and in 2021, there were ~802,500. These data come from [SOA tax bills eg:](https://a836-edms.nyc.gov/dctm-rest/repositories/dofedmspts/StatementSearch?bbl=1000900017&stmtDate=20230819&stmtType=SOA)
 
 ```{r}
 
